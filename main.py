@@ -96,6 +96,17 @@ def read_building(building_id: int, db: Session = Depends(get_db)):
         raise HTTPException(status_code=404, detail="Building not found")
     return db_building
 
+@app.get("/buildings/", response_model=List[BuildingCreate])
+def read_buildings(db: Session = Depends(get_db)):
+    buildings = db.query(Building).all()
+    return buildings
+
+@app.get("/groupbuildings")
+def get_group_buildings(db: Session = Depends(get_db)):
+    buildings = db.query(Building).all()
+    # You can customize the response format here if needed
+    return buildings
+
 @app.put("/buildings/{building_id}", response_model=BuildingCreate)
 def update_building(building_id: int, building: BuildingCreate, db: Session = Depends(get_db)):
     db_building = db.query(Building).filter(Building.id == building_id).first()
@@ -129,6 +140,20 @@ def create_unit(unit: UnitCreate, db: Session = Depends(get_db)):
 @app.get("/units/{unit_id}", response_model=UnitCreate)
 def read_unit(unit_id: int, db: Session = Depends(get_db)):
     db_unit = db.query(Unit).filter(Unit.id == unit_id).first()
+    if db_unit is None:
+        raise HTTPException(status_code=404, detail="Unit not found")
+    return db_unit
+
+@app.get("/units/", response_model=UnitCreate)
+def read_unit(unit_id: int, db: Session = Depends(get_db)):
+    db_unit = db.query(Unit)
+    if db_unit is None:
+        raise HTTPException(status_code=404, detail="Unit not found")
+    return db_unit
+
+@app.get("/unit/")
+def read_unit( db: Session = Depends(get_db)):
+    db_unit = db.query(Unit).filter(Unit.id != 0 ).all()
     if db_unit is None:
         raise HTTPException(status_code=404, detail="Unit not found")
     return db_unit
@@ -171,6 +196,13 @@ def read_number_of_users(number_of_users_id: int, db: Session = Depends(get_db))
         raise HTTPException(status_code=404, detail="Number of users not found")
     return db_number_of_users
 
+@app.get("/numberOfUsers", response_model=List[NumberOfUsersCreate])
+def read_all_number_of_users(db: Session = Depends(get_db)):
+    db_number_of_users = db.query(NumberOfUsers).all()
+    if not db_number_of_users:
+        return []
+    return db_number_of_users
+
 @app.put("/numberOfUsers/{number_of_users_id}", response_model=NumberOfUsersCreate)
 def update_number_of_users(number_of_users_id: int, number_of_users: NumberOfUsersCreate, db: Session = Depends(get_db)):
     db_number_of_users = db.query(NumberOfUsers).filter(NumberOfUsers.id == number_of_users_id).first()
@@ -206,6 +238,13 @@ def read_exam_status(exam_status_id: int, db: Session = Depends(get_db)):
     db_exam_status = db.query(ExamStatus).filter(ExamStatus.id == exam_status_id).first()
     if db_exam_status is None:
         raise HTTPException(status_code=404, detail="Exam status not found")
+    return db_exam_status
+
+@app.get("/examStatus/", response_model=List[ExamStatusCreate])
+def read_all_exam_status(db: Session = Depends(get_db)):
+    db_exam_status = db.query(ExamStatus).all()
+    if not db_exam_status:
+        return []
     return db_exam_status
 
 @app.put("/examStatus/{exam_status_id}", response_model=ExamStatusCreate)
@@ -244,6 +283,17 @@ def read_semester_status(semester_status_id: int, db: Session = Depends(get_db))
     if db_semester_status is None:
         raise HTTPException(status_code=404, detail="Semester status not found")
     return db_semester_status
+
+@app.get("/semesterStatus/", response_model=List[SemesterStatusCreate])
+def read_all_semester_status(db: Session = Depends(get_db)):
+    db_semester_status = db.query(SemesterStatus).all()
+    if not db_semester_status:
+        return []
+    return db_semester_status
+
+@app.get("/semesterstatus", response_model=List[SemesterStatusCreate])
+def read_all_semester_status_lowercase(db: Session = Depends(get_db)):
+    return read_all_semester_status(db)
 
 @app.put("/semesterStatus/{semester_status_id}", response_model=SemesterStatusCreate)
 def update_semester_status(semester_status_id: int, semester_status: SemesterStatusCreate, db: Session = Depends(get_db)):
@@ -295,6 +345,13 @@ def read_member(member_id: int, db: Session = Depends(get_db)):
     if db_member is None:
         raise HTTPException(status_code=404, detail="Member not found")
     return db_member
+
+@app.get("/members/", response_model=List[MemberCreate])
+def read_all_members(db: Session = Depends(get_db)):
+    db_members = db.query(Member).all()
+    if not db_members:
+        return []
+    return db_members
 
 @app.put("/members/{member_id}", response_model=MemberCreate)
 def update_member(member_id: int, member: MemberCreate, db: Session = Depends(get_db)):
