@@ -1,9 +1,15 @@
 from pydantic import BaseModel
+from datetime import datetime
+from typing import Optional
 
 class BuildingCreate(BaseModel):
     code: str
     name: str
     area: str
+    idGroup: Optional[int] = None
+    
+    class Config:
+        orm_mode = True
 
 class UnitCreate(BaseModel):
     years: int
@@ -60,3 +66,30 @@ class LoginResponse(BaseModel):
     username: str
     status: int
     name: str
+
+class NewsBase(BaseModel):
+    id: Optional[int] = None
+    title: str
+    content: Optional[str] = None
+    cover_image: Optional[str] = None
+    attachment: Optional[str] = None
+    created_at: Optional[datetime] = None
+
+    class Config:
+        orm_mode = True
+        from_attributes = True
+
+class ExamStatusBase(BaseModel):
+    years: int
+    month: int
+    status: bool
+
+class ExamStatusCreate(ExamStatusBase):
+    pass
+
+class ExamStatusResponse(ExamStatusBase):
+    id: int
+
+    class Config:
+        orm_mode = True  # สำหรับ pydantic V1
+        # ใน pydantic V2 ใช้: from_attributes = True

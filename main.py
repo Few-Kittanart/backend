@@ -3,7 +3,7 @@ from sqlalchemy import create_engine
 from sqlalchemy.orm import sessionmaker, Session
 from typing import List
 from database import Base
-from models import Building, PredictionTable, Unit, NumberOfUsers, ExamStatus, SemesterStatus, Member
+from models import Building, PredictionTable, Unit, NumberOfUsers, ExamStatus, SemesterStatus, Member , GroupBuilding
 from schemas import BuildingCreate, LoginData, UnitCreate, NumberOfUsersCreate, ExamStatusCreate, SemesterStatusCreate, MemberCreate, PredictionRequest, PredictionResponse
 from predict import predict
 from fastapi import FastAPI
@@ -13,10 +13,18 @@ from cryptography.hazmat.primitives import hashes
 from cryptography.hazmat.backends import default_backend
 import os
 import base64
-
+from fastapi import Depends, HTTPException
+from sqlalchemy.orm import Session
+from schemas import NewsBase
+from models import News  # Ensure this model exists
+from fastapi import FastAPI, HTTPException
+from fastapi.staticfiles import StaticFiles
+from fastapi.responses import FileResponse
 
 
 DATABASE_URL = "mysql+pymysql://root:@localhost/efsdata"
+
+IMAGES_DIRECTORY = "images" 
 
 engine = create_engine(DATABASE_URL)
 SessionLocal = sessionmaker(autocommit=False, autoflush=False, bind=engine)
@@ -80,10 +88,46 @@ def get_db():
     finally:
         db.close()
 
+# app.mount("/images", StaticFiles(directory="images"), name="images")
+
+@app.get("/images/{filename}")
+async def get_image(filename: str):
+    print(f"Requested image: {filename}")
+    image_path = os.path.join(IMAGES_DIRECTORY, filename)
+    print(f"Full path: {image_path}")
+    print(f"File exists: {os.path.exists(image_path)}")
+    
+    if not os.path.exists(image_path):
+        raise HTTPException(status_code=404, detail="Image not found")
+    
+    return FileResponse(image_path)
+
+@app.get("/news", response_model=List[NewsBase])
+def get_news(db: Session = Depends(get_db)):
+    news = db.query(News).order_by(News.created_at.desc()).all()
+    return news
+
+@app.get("/news", response_model=List[NewsBase])
+def get_news(db: Session = Depends(get_db)):
+    news = db.query(News).order_by(News.created_at.desc()).all()
+    return news
+
+@app.get("/news/{news_id}", response_model=NewsBase)
+def get_news_by_id(news_id: int, db: Session = Depends(get_db)):
+    news = db.query(News).filter(News.id == news_id).first()
+    if not news:
+        raise HTTPException(status_code=404, detail="News not found")
+    return news
+
 # CRUD for Building
 @app.post("/buildings/", response_model=BuildingCreate)
 def create_building(building: BuildingCreate, db: Session = Depends(get_db)):
-    db_building = Building(code=building.code, name=building.name, area=building.area)
+    db_building = Building(
+        code=building.code, 
+        name=building.name, 
+        area=building.area,
+        idGroup=building.idGroup
+    )
     db.add(db_building)
     db.commit()
     db.refresh(db_building)
@@ -104,8 +148,14 @@ def read_buildings(db: Session = Depends(get_db)):
 @app.get("/groupbuildings")
 def get_group_buildings(db: Session = Depends(get_db)):
     buildings = db.query(Building).all()
-    # You can customize the response format here if needed
-    return buildings
+    # ปรับแต่งรูปแบบการตอบกลับให้มีเฉพาะข้อมูลที่ต้องการ
+    return [{"id": building.id, "name": building.name,} for building in buildings]
+
+@app.get("/groupofbuildings")
+def get_group_buildings(db: Session = Depends(get_db)):
+    buildings = db.query(GroupBuilding).all()
+    # ปรับแต่งรูปแบบการตอบกลับให้มีเฉพาะข้อมูลที่ต้องการ
+    return [{"id": building.id, "name": building.name,} for building in buildings]
 
 @app.put("/buildings/{building_id}", response_model=BuildingCreate)
 def update_building(building_id: int, building: BuildingCreate, db: Session = Depends(get_db)):
@@ -151,12 +201,37 @@ def read_unit(unit_id: int, db: Session = Depends(get_db)):
         raise HTTPException(status_code=404, detail="Unit not found")
     return db_unit
 
+
+
 @app.get("/unit/")
-def read_unit( db: Session = Depends(get_db)):
-    db_unit = db.query(Unit).filter(Unit.id != 0 ).all()
-    if db_unit is None:
-        raise HTTPException(status_code=404, detail="Unit not found")
-    return db_unit
+def read_unit(
+    year: int = Query(None),
+    month: int = Query(None),
+    db: Session = Depends(get_db)
+):
+    query = db.query(Unit).filter(Unit.id != 0)
+    if year is not None:
+        query = query.filter(Unit.years == year)
+    if month is not None:
+        query = query.filter(Unit.month == month)
+    
+    units = query.all()
+    return units
+
+@app.get("/units")
+def get_units_by_year_month(
+    year: int = Query(None), 
+    month: int = Query(None), 
+    db: Session = Depends(get_db)
+):
+    query = db.query(Unit)
+    if year is not None:
+        query = query.filter(Unit.years == year)
+    if month is not None:
+        query = query.filter(Unit.month == month)
+    
+    units = query.all()
+    return units
 
 @app.put("/units/{unit_id}", response_model=UnitCreate)
 def update_unit(unit_id: int, unit: UnitCreate, db: Session = Depends(get_db)):
@@ -189,6 +264,36 @@ def create_number_of_users(number_of_users: NumberOfUsersCreate, db: Session = D
     db.refresh(db_number_of_users)
     return db_number_of_users
 
+@app.post("/add-numberofusers/")
+def add_number_of_users(data: dict, db: Session = Depends(get_db)):
+    # Create entries for all 12 months with the same user amount
+    added_entries = []
+    year = data.get("years")
+    amount = data.get("amount")
+    
+    for month in range(1, 13):
+        # Check if entry already exists for this year and month
+        existing = db.query(NumberOfUsers).filter(
+            NumberOfUsers.years == year, 
+            NumberOfUsers.month == month
+        ).first()
+        
+        if existing:
+            # Update existing entry
+            existing.amount = amount
+            db.commit()
+            db.refresh(existing)
+            added_entries.append(existing)
+        else:
+            # Create new entry
+            new_entry = NumberOfUsers(years=year, month=month, amount=amount)
+            db.add(new_entry)
+            db.commit()
+            db.refresh(new_entry)
+            added_entries.append(new_entry)
+    
+    return {"message": "Data added successfully", "entries": len(added_entries)}
+
 @app.get("/numberOfUsers/{number_of_users_id}", response_model=NumberOfUsersCreate)
 def read_number_of_users(number_of_users_id: int, db: Session = Depends(get_db)):
     db_number_of_users = db.query(NumberOfUsers).filter(NumberOfUsers.id == number_of_users_id).first()
@@ -215,6 +320,33 @@ def update_number_of_users(number_of_users_id: int, number_of_users: NumberOfUse
     db.refresh(db_number_of_users)
     return db_number_of_users
 
+@app.put("/update-numberofusers/{year}")
+def update_number_of_users_by_year(year: int, data: dict, db: Session = Depends(get_db)):
+    # Find all entries for the specified year
+    entries = db.query(NumberOfUsers).filter(NumberOfUsers.years == year).all()
+    
+    if not entries:
+        raise HTTPException(status_code=404, detail="No data found for this year")
+    
+    new_year = data.get("years")
+    new_amount = data.get("amount")
+    
+    # Check if the year already exists and it's not the same as the current year
+    if new_year != year:
+        existing = db.query(NumberOfUsers).filter(NumberOfUsers.years == new_year).first()
+        if existing:
+            raise HTTPException(status_code=400, detail="Year already exists, cannot update")
+    
+    # Update all entries for the year
+    count = 0
+    for entry in entries:
+        entry.years = new_year
+        entry.amount = new_amount
+        count += 1
+    
+    db.commit()
+    return {"message": "Data updated successfully", "updated_count": count}
+
 @app.delete("/numberOfUsers/{number_of_users_id}")
 def delete_number_of_users(number_of_users_id: int, db: Session = Depends(get_db)):
     db_number_of_users = db.query(NumberOfUsers).filter(NumberOfUsers.id == number_of_users_id).first()
@@ -223,6 +355,23 @@ def delete_number_of_users(number_of_users_id: int, db: Session = Depends(get_db
     db.delete(db_number_of_users)
     db.commit()
     return {"detail": "Number of users deleted"}
+
+@app.delete("/delete-numberofusers/{year}")
+def delete_number_of_users_by_year(year: int, db: Session = Depends(get_db)):
+    # Find all entries for the specified year
+    entries = db.query(NumberOfUsers).filter(NumberOfUsers.years == year).all()
+    
+    if not entries:
+        raise HTTPException(status_code=404, detail="No data found for this year")
+    
+    # Delete all entries for the year
+    count = 0
+    for entry in entries:
+        db.delete(entry)
+        count += 1
+    
+    db.commit()
+    return {"message": "Data deleted successfully", "deleted_count": count}
 
 # CRUD for ExamStatus
 @app.post("/examStatus/", response_model=ExamStatusCreate)
@@ -245,18 +394,6 @@ def read_all_exam_status(db: Session = Depends(get_db)):
     db_exam_status = db.query(ExamStatus).all()
     if not db_exam_status:
         return []
-    return db_exam_status
-
-@app.put("/examStatus/{exam_status_id}", response_model=ExamStatusCreate)
-def update_exam_status(exam_status_id: int, exam_status: ExamStatusCreate, db: Session = Depends(get_db)):
-    db_exam_status = db.query(ExamStatus).filter(ExamStatus.id == exam_status_id).first()
-    if db_exam_status is None:
-        raise HTTPException(status_code=404, detail="Exam status not found")
-    db_exam_status.years = exam_status.years
-    db_exam_status.month = exam_status.month
-    db_exam_status.status = exam_status.status
-    db.commit()
-    db.refresh(db_exam_status)
     return db_exam_status
 
 @app.delete("/examStatus/{exam_status_id}")
@@ -453,8 +590,6 @@ def check_predictions(year: int = Query(...), month: int = Query(...), db: Sessi
         return []
     
     return predictions
-
-
 
 
     

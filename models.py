@@ -1,15 +1,29 @@
 from datetime import datetime  # ใช้ datetime จาก Python เองสำหรับเวลาปัจจุบัน
 from sqlalchemy import Column, ForeignKey, Integer, String, Float, Boolean, DateTime  # นำเข้า Boolean และ DateTime จาก SQLAlchemy
 from sqlalchemy.ext.declarative import declarative_base
+from sqlalchemy import Column, Integer, String, Text, DateTime
+from sqlalchemy.sql import func
+from database import Base
 
 Base = declarative_base()
+
+class News(Base):
+    __tablename__ = 'news'  # Ensure this matches your actual table name
+    
+    id = Column(Integer, primary_key=True, index=True)
+    title = Column(String(255), nullable=False)
+    content = Column(Text)
+    cover_image = Column(String(500))  # Matches your screenshot
+    attachment = Column(String(500))  # Increased length to handle long filenames
+    created_at = Column(DateTime(timezone=True), server_default=func.now())
 
 class Building(Base):
     __tablename__ = 'building'
     id = Column(Integer, primary_key=True, index=True)
-    code = Column(String, index=True)
-    name = Column(String, index=True)
+    code = Column(String(50))
+    name = Column(String(100))
     area = Column(String, index=True)
+    idGroup = Column(Integer, index=True)
 
 class Unit(Base):
     __tablename__ = 'unit'
@@ -51,10 +65,6 @@ class Member(Base):
     phone = Column(String)
     status = Column(Integer)
 
-
-
-
-
 class PredictionTable(Base):
     __tablename__ = "predictiontable"
 
@@ -69,3 +79,10 @@ class PredictionTable(Base):
     month_predict = Column(Integer)
     year_predict = Column(Integer)
     created_at = Column(DateTime, default=datetime.utcnow)
+
+class GroupBuilding(Base):
+    __tablename__ = 'groupbuilding'
+    id = Column(Integer, primary_key=True, index=True)
+    name = Column(String, index=True)
+    about = Column(Text)
+
